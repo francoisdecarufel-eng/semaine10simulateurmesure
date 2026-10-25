@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulateur Mathématique - Lecture Précise de la Règle</title>
+    
+    <!-- Tailwind CSS pour une mise en page parfaite -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        /* Styles globaux professionnels */
+        body {
+            font-family: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8fafc;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Variables d'échelle pour l'alignement parfait au pixel */
+        :root {
+            --cm-px: 50px;
+            --mm-px: 5px;
+            --ruler-padding: 40px;
+        }
+
+        /* Zone de dessin (Canvas) */
+        .simulation-canvas {
+            background-image: 
+                linear-gradient(to right, #e2e8f0 1px, transparent 1px),
+                linear-gradient(to bottom, #e2e8f0 1px, transparent 1px);
+            background-size: 20px 20px;
+            background-position: center top;
+        }
+
+        /* Ticks de la règle parfaitement centrés */
+        .ruler-tick {
+            position: absolute;
+            top: 0;
+            background-color: #1e293b;
+            transform: translateX(-50%); /* Centrage absolu sur le pixel exact */
+            border-radius: 0 0 2px 2px;
+        }
+        .tick-mm { width: 2px; height: 12px; opacity: 0.7; }
+        .tick-half-cm { width: 2px; height: 22px; opacity: 0.85; }
+        .tick-cm { width: 3px; height: 35px; opacity: 1; }
+        
+        .ruler-number {
+            position: absolute;
+            top: 42px;
+            transform: translateX(-50%);
+            font-weight: 800;
+            font-size: 16px;
+            color: #0f172a;
+        }
+
+        /* Guides de mesure ultra-précis */
+        .guide-line {
+            position: absolute;
+            width: 2px;
+            transform: translateX(-50%); /* Centrage absolu */
+            z-index: 30;
+        }
+        .guide-start { 
+            background-color: #ef4444; 
+            box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
+        }
+        .guide-end { 
+            background-color: #3b82f6;
+            box-shadow: 0 0 4px rgba(59, 130, 246, 0.5);
+        }
+
+        /* Dessin du crayon parfait via CSS Clip-Path */
+        .pencil-tip-shape {
+            clip-path: polygon(0 0, 100% 50%, 0 100%);
+        }
+
+        /* Utilitaires */
+        .no-select { user-select: none; -webkit-user-select: none; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center py-8 px-4 text-slate-800">
+
+    <!-- En-tête Pédagogique -->
+    <header class="w-full max-w-5xl bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-8 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div>
+            <div class="flex items-center gap-3 mb-2">
+                <span class="text-3xl">📏</span>
+                <h1 class="text-2xl md:text-3xl font-extrabold text-slate-800 tracking-tight">
+                    Mesure Parfaite
+                </h1>
+            </div>
+            <p class="text-slate-600 font-medium text-lg">
+                Lis la mesure indiquée par la ligne bleue, puis entre ta réponse.
+            </p>
+        </div>
+        <div class="bg-indigo-50 border border-indigo-100 text-indigo-700 px-6 py-3 rounded-xl font-bold text-xl shadow-inner">
+            Niveau <span id="level-display">1</span>
+        </div>
+    </header>
+
+    <!-- Zone de Simulation Interactive -->
+    <main class="w-full max-w-5xl bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden mb-8 no-select flex flex-col">
+        
+        <!-- Fenêtre du simulateur (Canvas) -->
+        <div id="simulation-area" class="w-full h-[360px] bg-slate-50 relative overflow-x-auto overflow-y-hidden simulation-canvas no-scrollbar flex items-center justify-start px-12">
+            
+            <!-- Conteneur relatif pour l'alignement absolu -->
+            <div class="relative w-[900px] h-[300px] mx-auto shrink-0">
+                
+                <!-- GUIDE ROUGE (Début - Ligne 0) -->
+                <div class="guide-line guide-start h-[120px]" style="left: 60px; top: 60px;">
+                    <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-red-500 text-white text-sm font-bold px-3 py-1 rounded-full whitespace-nowrap shadow-md">
+                        Début (0)
+                    </div>
+                </div>
+
+                <!-- CRAYON (Posé exactement sur la règle) -->
+                <!-- Hauteur crayon: 40px. Top: 110px. Donc le bas est à 150px. -->
+                <div id="pencil-container" class="absolute h-[40px] flex items-center drop-shadow-md z-20" style="left: 60px; top: 110px;">
+                    
+                    <!-- Corps du crayon -->
+                    <div id="pencil-body" class="h-full bg-gradient-to-b from-amber-400 via-amber-300 to-amber-500 rounded-l-md border-y border-l border-amber-600 flex flex-col justify-evenly px-2">
+                        <div class="h-[1px] bg-amber-700/30 w-full"></div>
+                        <div class="h-[1px] bg-amber-700/30 w-full"></div>
+                    </div>
+                    
+                    <!-- Pointe du crayon (Clip-path parfait) -->
+                    <div class="relative h-[40px] w-[40px] bg-gradient-to-r from-orange-200 to-orange-100 pencil-tip-shape border-y border-orange-300">
+                        <!-- Mine de graphite -->
+                        <div class="absolute right-0 top-[14px] w-[12px] h-[12px] bg-slate-800 pencil-tip-shape"></div>
+                    </div>
+
+                </div>
+
+                <!-- GUIDE BLEU (Fin - Pointe exacte) -->
+                <!-- Il descend JUSQUE DANS la règle pour pointer la graduation -->
+                <div id="guide-end" class="guide-line guide-end h-[95px] z-30" style="top: 110px; left: 0px;">
+                    <div class="absolute -top-10 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-sm font-bold px-3 py-1 rounded-full whitespace-nowrap shadow-md">
+                        Mesure ici
+                    </div>
+                    <!-- Pointeur flèche vers le bas -->
+                    <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent border-t-blue-500"></div>
+                </div>
+
+                <!-- RÈGLE GRADUÉE -->
+                <!-- Top: 150px. Le haut de la règle touche le bas du crayon (110+40=150) -->
+                <div id="ruler" class="absolute h-[90px] bg-white border-t border-b-4 border-slate-300 shadow-lg rounded-b-lg z-10" style="left: 20px; top: 150px;">
+                    <!-- Dégradé subtil -->
+                    <div class="absolute inset-0 bg-gradient-to-b from-white to-slate-100 rounded-b-lg opacity-50 pointer-events-none"></div>
+                    <div class="absolute right-4 bottom-2 text-slate-400 font-bold text-lg">cm</div>
+                    
+                    <!-- Conteneur des graduations -->
+                    <div id="ruler-ticks" class="relative w-full h-full pointer-events-none"></div>
+                </div>
+
+                <!-- OVERLAY EXPLICATIONS -->
+                <div id="explanation-box" class="hidden absolute top-[250px] left-[60px] right-0 flex pointer-events-none z-40 transition-opacity">
+                    <div id="explanation-text" class="bg-indigo-600 text-white p-4 rounded-xl shadow-xl font-bold text-lg animate-pulse">
+                        Explication : ...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Zone de Contrôle / Saisie de l'élève -->
+        <div class="p-6 md:p-8 bg-slate-50 border-t border-slate-200 flex flex-col gap-8">
+            
+            <div class="flex flex-col md:flex-row justify-center items-center gap-8 md:gap-12">
+                
+                <!-- Compteur de CM -->
+                <div class="flex flex-col items-center">
+                    <label class="text-slate-500 font-bold text-sm tracking-wider uppercase mb-3">Centimètres</label>
+                    <div class="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
+                        <button id="btn-cm-minus" class="w-14 h-14 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-3xl font-bold transition-colors active:scale-95">-</button>
+                        <div class="w-20 text-center">
+                            <span id="display-cm" class="text-4xl font-black text-slate-800">0</span>
+                        </div>
+                        <button id="btn-cm-plus" class="w-14 h-14 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-3xl font-bold transition-colors active:scale-95">+</button>
+                    </div>
+                </div>
+
+                <div class="text-5xl font-light text-slate-300 hidden md:block">,</div>
+
+                <!-- Compteur de MM -->
+                <div class="flex flex-col items-center">
+                    <label class="text-slate-500 font-bold text-sm tracking-wider uppercase mb-3">Millimètres</label>
+                    <div class="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
+                        <button id="btn-mm-minus" class="w-14 h-14 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-3xl font-bold transition-colors active:scale-95">-</button>
+                        <div class="w-20 text-center">
+                            <span id="display-mm" class="text-4xl font-black text-slate-800">0</span>
+                        </div>
+                        <button id="btn-mm-plus" class="w-14 h-14 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-3xl font-bold transition-colors active:scale-95">+</button>
+                    </div>
+                </div>
+
+                <!-- Action de Validation -->
+                <div class="flex flex-col justify-end h-full pt-6 md:pt-0">
+                    <button id="btn-validate" class="bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xl py-5 px-10 rounded-2xl shadow-[0_6px_0_rgb(4,120,87)] hover:translate-y-[2px] hover:shadow-[0_4px_0_rgb(4,120,87)] transition-all active:shadow-none active:translate-y-[6px]">
+                        VÉRIFIER
+                    </button>
+                </div>
+            </div>
+
+            <!-- Feedbacks Visuels -->
+            <div id="feedback-success" class="hidden bg-emerald-100 border-l-8 border-emerald-500 p-5 rounded-r-2xl shadow-sm flex items-center gap-4">
+                <span class="text-3xl">✅</span>
+                <p class="text-emerald-800 font-bold text-xl">Excellente lecture ! C'est parfaitement exact.</p>
+            </div>
+            
+            <div id="feedback-error" class="hidden bg-rose-100 border-l-8 border-rose-500 p-5 rounded-r-2xl shadow-sm flex items-center gap-4">
+                <span class="text-3xl">❌</span>
+                <p class="text-rose-800 font-bold text-xl">Presque... Regarde bien la ligne bleue. Compte d'abord les gros chiffres (cm), puis les petites lignes (mm).</p>
+            </div>
+
+            <!-- Menu Pédagogique -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6 border-t border-slate-200">
+                <button id="btn-show-answer" class="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold py-4 px-6 rounded-xl shadow-sm transition-all active:scale-95">
+                    <span>👀</span> Voir la réponse
+                </button>
+                
+                <button id="btn-explain" class="flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold py-4 px-6 rounded-xl shadow-sm transition-all active:scale-95">
+                    <span>💡</span> Comprendre la mesure
+                </button>
+
+                <button id="btn-next" class="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white font-bold py-4 px-6 rounded-xl shadow-[0_4px_0_rgb(15,23,42)] hover:translate-y-[2px] hover:shadow-[0_2px_0_rgb(15,23,42)] transition-all active:translate-y-[4px] active:shadow-none">
+                    <span>Suivant</span> ➡️
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Code Logique Javascript Professionnel -->
+    <script>
+        // -- CONFIGURATION GÉOMÉTRIQUE STRICTE --
+        const CM_TO_PX = 50; // Exactement 50px pour 1cm
+        const MM_TO_PX = CM_TO_PX / 10; // Exactement 5px pour 1mm
+        const RULER_PADDING = 40; // Marge avant le Zéro sur la règle
+        const RULER_LENGTH_CM = 15; // Règle de 15 cm
+        
+        // Position X du Zéro de la règle dans le container (20px left margin + 40px padding = 60px)
+        const ZERO_X = 60; 
+        const TIP_WIDTH = 40; // Largeur fixe de la pointe du crayon en SVG/CSS
+
+        // -- ÉTAT DE L'APPLICATION --
+        let state = {
+            level: 1,
+            lengthFloat: 0, // ex: 7.4
+            answerCm: 0,
+            answerMm: 0,
+            isExplained: false
+        };
+
+        // -- CACHE DOM --
+        const DOM = {
+            ruler: document.getElementById('ruler'),
+            rulerTicks: document.getElementById('ruler-ticks'),
+            pencilBody: document.getElementById('pencil-body'),
+            guideEnd: document.getElementById('guide-end'),
+            displayCm: document.getElementById('display-cm'),
+            displayMm: document.getElementById('display-mm'),
+            levelDisplay: document.getElementById('level-display'),
+            feedbackSuccess: document.getElementById('feedback-success'),
+            feedbackError: document.getElementById('feedback-error'),
+            explainBox: document.getElementById('explanation-box'),
+            explainText: document.getElementById('explanation-text')
+        };
+
+        // -- INITIALISATION DE L'INTERFACE --
+        function initRuler() {
+            // Largeur de la règle : (15cm * 50px) + (2 * 40px padding) = 830px
+            DOM.ruler.style.width = `${(RULER_LENGTH_CM * CM_TO_PX) + (RULER_PADDING * 2)}px`;
+            
+            // Génération des graduations centrées mathématiquement
+            let ticksHTML = '';
+            for (let i = 0; i <= (RULER_LENGTH_CM * 10); i++) {
+                const posPx = RULER_PADDING + (i * MM_TO_PX);
+                
+                if (i % 10 === 0) {
+                    ticksHTML += `<div class="ruler-tick tick-cm" style="left: ${posPx}px"></div>`;
+                    ticksHTML += `<div class="ruler-number" style="left: ${posPx}px">${i / 10}</div>`;
+                } else if (i % 5 === 0) {
+                    ticksHTML += `<div class="ruler-tick tick-half-cm" style="left: ${posPx}px"></div>`;
+                } else {
+                    ticksHTML += `<div class="ruler-tick tick-mm" style="left: ${posPx}px"></div>`;
+                }
+            }
+            DOM.rulerTicks.innerHTML = ticksHTML;
+        }
+
+        // -- LOGIQUE MÉTIER --
+        function generateProblem() {
+            // Générer une longueur entre 3.0 cm et 14.5 cm
+            const min = 30;
+            const max = 145;
+            state.lengthFloat = (Math.floor(Math.random() * (max - min + 1)) + min) / 10;
+            
+            // Réinitialisation des inputs
+            state.answerCm = 0;
+            state.answerMm = 0;
+            state.isExplained = false;
+            
+            hideAlerts();
+            render();
+        }
+
+        function render() {
+            // 1. Calculs des dimensions en pixels
+            const totalWidthPx = state.lengthFloat * CM_TO_PX;
+            
+            // 2. Redimensionner le corps du crayon pour que la pointe finisse exactement à la mesure
+            // Largeur totale = Largeur Corps + Largeur Pointe (40)
+            DOM.pencilBody.style.width = `${totalWidthPx - TIP_WIDTH}px`;
+            
+            // 3. Placer la ligne bleue EXACTEMENT sur la graduation de fin
+            // La position est ZERO_X + la largeur du crayon
+            DOM.guideEnd.style.left = `${ZERO_X + totalWidthPx}px`;
+
+            // 4. Mise à jour des compteurs HTML
+            DOM.displayCm.textContent = state.answerCm;
+            DOM.displayMm.textContent = state.answerMm;
+            DOM.levelDisplay.textContent = state.level;
+
+            // 5. Gestion de l'explication visuelle
+            if (state.isExplained) {
+                const cm = Math.floor(state.lengthFloat);
+                const mm = Math.round((state.lengthFloat - cm) * 10);
+                DOM.explainBox.classList.remove('hidden');
+                // Aligner la boîte sous la pointe
+                DOM.explainBox.style.left = `${ZERO_X + (cm * CM_TO_PX)}px`;
+                DOM.explainText.innerHTML = `L'objet dépasse <strong>${cm} cm</strong> et s'arrête <strong>${mm} petites lignes</strong> plus loin.<br>Mesure = ${cm} cm et ${mm} mm.`;
+            } else {
+                DOM.explainBox.classList.add('hidden');
+            }
+        }
+
+        function checkAnswer() {
+            const userAnswer = state.answerCm + (state.answerMm / 10);
+            hideAlerts();
+            
+            // Tolérance mathématique pour les flottants
+            if (Math.abs(userAnswer - state.lengthFloat) < 0.01) {
+                DOM.feedbackSuccess.classList.remove('hidden');
+            } else {
+                DOM.feedbackError.classList.remove('hidden');
+            }
+        }
+
+        function showCorrectAnswer() {
+            state.answerCm = Math.floor(state.lengthFloat);
+            state.answerMm = Math.round((state.lengthFloat - state.answerCm) * 10);
+            hideAlerts();
+            DOM.feedbackSuccess.classList.remove('hidden');
+            render();
+        }
+
+        function hideAlerts() {
+            DOM.feedbackSuccess.classList.add('hidden');
+            DOM.feedbackError.classList.add('hidden');
+            DOM.explainBox.classList.add('hidden');
+            state.isExplained = false;
+        }
+
+        // -- BINDINGS DES BOUTONS --
+        document.getElementById('btn-cm-plus').addEventListener('click', () => {
+            if (state.answerCm < 15) { state.answerCm++; render(); }
+        });
+        document.getElementById('btn-cm-minus').addEventListener('click', () => {
+            if (state.answerCm > 0) { state.answerCm--; render(); }
+        });
+        document.getElementById('btn-mm-plus').addEventListener('click', () => {
+            if (state.answerMm < 9) { state.answerMm++; render(); }
+        });
+        document.getElementById('btn-mm-minus').addEventListener('click', () => {
+            if (state.answerMm > 0) { state.answerMm--; render(); }
+        });
+
+        document.getElementById('btn-validate').addEventListener('click', checkAnswer);
+        document.getElementById('btn-show-answer').addEventListener('click', showCorrectAnswer);
+        document.getElementById('btn-explain').addEventListener('click', () => {
+            state.isExplained = true;
+            hideAlerts();
+            render();
+            // Force l'affichage de l'explication après le hideAlerts
+            state.isExplained = true;
+            render(); 
+        });
+        
+        document.getElementById('btn-next').addEventListener('click', () => {
+            state.level++;
+            generateProblem();
+        });
+
+        // -- DÉMARRAGE DU PROGRAMME --
+        initRuler();
+        generateProblem();
+
+    </script>
+</body>
+</html>
